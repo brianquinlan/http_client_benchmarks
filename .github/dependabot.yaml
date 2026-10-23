@@ -1,0 +1,30 @@
+# Dependabot configuration file.
+# See https://docs.github.com/en/code-security/dependabot/dependabot-version-updates
+
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    cooldown:
+      default-days: 7
+
+  # Keeps pubspec.lock, and therefore the benchmarked client versions, current.
+  - package-ecosystem: pub
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+
+  - package-ecosystem: gomod
+    directory: /server
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7

@@ -1,0 +1,84 @@
+name: CI
+permissions:
+  contents: read
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  schedule:
+    # Weekly, to catch breakages caused by new releases of Dart, Go or the
+    # dependencies.
+    - cron: "0 0 * * 0"
+
+env:
+  PUB_ENVIRONMENT: bot.github
+
+jobs:
+  # Check formatting and static analysis on a single OS (Linux).
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: dart-lang/setup-dart@7654d458321ee25acccccfdb86cd48bd95768ff1
+        with:
+          sdk: stable
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - id: install
+        name: Install dependencies
+        run: dart pub get
+      - name: Check Dart formatting
+        run: dart format --output=none --set-exit-if-changed .
+        if: always() && steps.install.outcome == 'success'
+      - name: Analyze Dart code
+        run: dart analyze --fatal-infos
+        if: always() && steps.install.outcome == 'success'
+      - name: Check Go formatting
+        working-directory: server
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files need to be formatted with gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+        if: always()
+      - name: Vet Go code
+        working-directory: server
+        run: go vet ./...
+        if: always()
+
+  # Run the tests on Linux and on macOS, where CupertinoClient is also tested.
+  test:
+    needs: analyze
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: dart-lang/setup-dart@7654d458321ee25acccccfdb86cd48bd95768ff1
+        with:
+          sdk: stable
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - id: install
+        name: Install dependencies
+        run: dart pub get
+      - name: Run Go tests
+        working-directory: server
+        run: go test ./...
+      - name: Run Dart tests
+        run: dart test
+        if: always() && steps.install.outcome == 'success'
