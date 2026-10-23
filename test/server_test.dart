@@ -6,6 +6,7 @@
 @Timeout(Duration(minutes: 3))
 library;
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:http/http.dart';
@@ -139,5 +140,38 @@ void main() {
     final events = body.split('\n\n').where((e) => e.isNotEmpty).toList();
     expect(events, hasLength(3));
     expect(events.first, startsWith('data: 0 '));
+  });
+
+  test('connect uses a server that is already running', () async {
+    // As the Flutter runner app does, using details passed as JSON.
+    final connected = BenchmarkServer.connect(
+      ServerInfo.fromJson(
+        jsonDecode(jsonEncode(server.info.toJson())) as Map<String, Object?>,
+      ),
+      caCertificate: server.caCertificate,
+    );
+    final v = variant('ioclient-h1');
+    expect(
+      connected.uri(v.protocol, '/bytes', origin: 1),
+      server.uri(v.protocol, '/bytes', origin: 1),
+    );
+    final client = v.create();
+    addTearDown(client.close);
+    await connected.resetStats();
+    await client.get(connected.uri(v.protocol, '/bytes'));
+    expect((await connected.stats()).requests['HTTP/1.1'], 1);
+
+    // Closing the connection does not stop the server.
+    await connected.close();
+    expect((await server.stats()).requests['HTTP/1.1'], 1);
+  });
+
+  test('builds the server for Android devices', () async {
+    final binary = await BenchmarkServer.build(
+      os: 'linux',
+      architecture: goArchitectureForAbi('arm64-v8a'),
+    );
+    final header = await File(binary).openRead(0, 4).expand((b) => b).toList();
+    expect(header, [0x7f, 0x45, 0x4c, 0x46], reason: 'an ELF executable');
   });
 }

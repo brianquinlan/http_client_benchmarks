@@ -72,4 +72,36 @@ void main() {
     expect(htmlReport(report), contains('<svg'));
     expect(markdownReport(report), contains('## Summary'));
   });
+
+  test('skips the scenarios that a client variant cannot run', () async {
+    final ioClient = createClientVariants().firstWhere(
+      (v) => v.id == 'ioclient-h1c',
+    );
+    final report = await BenchmarkRunner(
+      server: server,
+      environment: await Environment.capture(),
+      variants: [
+        ClientVariant(
+          client: ioClient.client,
+          protocol: ioClient.protocol,
+          factory: ioClient.create,
+          skippedScenarios: {'get-sequential': 'Not supported'},
+        ),
+      ],
+      scenarios: [
+        for (final scenario in createScenarios(quick: true))
+          if (scenario.id == 'get-sequential') scenario,
+      ],
+      configuration: RunConfiguration(
+        trials: 1,
+        warmup: 0,
+        quick: true,
+        httpProfiling: false,
+      ),
+    ).run();
+
+    final result = report.results.single;
+    expect(result.status, RunStatus.skipped);
+    expect(result.message, 'Not supported');
+  });
 }

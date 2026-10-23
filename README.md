@@ -6,13 +6,16 @@ Benchmarks that compare the performance of `package:http`
 [`Client`](https://pub.dev/documentation/http/latest/http/Client-class.html)
 implementations over HTTP/1.1, HTTP/2 and HTTP/3.
 
-The benchmarks run in the Dart VM and exercise:
+The benchmarks run in the Dart VM, or in a Flutter app on Android devices,
+and exercise:
 
 | Client | Package | Protocols |
 | --- | --- | --- |
 | `IOClient` | [`package:http`](https://pub.dev/packages/http) | HTTP/1.1 (cleartext and TLS) |
 | `Http2Client` | [`package:http2`](https://pub.dev/packages/http2) | HTTP/2 |
 | `CupertinoClient` (macOS only) | [`package:cupertino_http`](https://pub.dev/packages/cupertino_http) | HTTP/1.1 (cleartext and TLS), HTTP/2, HTTP/3 |
+| `OkHttpClient` (Android only) | [`package:ok_http`](https://pub.dev/packages/ok_http) | HTTP/1.1 (cleartext and TLS), HTTP/2 |
+| `CronetClient` (Android only) | [`package:cronet_http`](https://pub.dev/packages/cronet_http) | HTTP/1.1 (cleartext and TLS), HTTP/2, HTTP/3 |
 
 Requests are served by a purpose-built server, written in Go, that speaks
 every protocol (using [`quic-go`](https://github.com/quic-go/quic-go) for
@@ -25,6 +28,8 @@ HTTP/3).
   (with `go build`) whenever the benchmarks run; the first build downloads
   `quic-go`.
 * macOS with the Xcode command line tools to benchmark `CupertinoClient`.
+* [Flutter](https://docs.flutter.dev/get-started), `adb` and an Android
+  device or emulator to benchmark on Android.
 
 ## Running the benchmarks
 
@@ -91,6 +96,52 @@ its private key were leaked it could not be used to impersonate other servers
 security remove-trusted-cert .dart_tool/http_client_benchmarks/certs/ca.pem
 ```
 
+On other platforms, the CA is not restricted to loopback IP addresses because
+`dart:io` verifies certificates with BoringSSL there, and BoringSSL rejects
+certificates for IP addresses that are issued by a CA with IP address
+constraints. That CA only needs to be trusted by the benchmarks themselves,
+never by the operating system.
+
+### Benchmarking on Android
+
+`OkHttpClient` and `CronetClient` only run on Android, so they are benchmarked
+by a Flutter app, [`flutter_runner`](flutter_runner/), on an Android device or
+emulator, together with `IOClient` and `Http2Client`:
+
+```shell
+adb devices  # Lists the serial numbers of the devices, e.g. emulator-5554.
+dart run bin/benchmark.dart run --device emulator-5554 --quick
+```
+
+The benchmark server is built for the device and started on it (using `adb`),
+so that the clients and the server communicate over the loopback interface,
+as they do on a computer. The app is built in profile mode and run with
+`flutter drive`, which takes a few minutes the first time, and the reports are
+written on the computer as usual. All the options of `run` work with
+`--device`, e.g. `--client okhttpclient --protocol h2`.
+
+* The app trusts the benchmark CA only for connections to the server on the
+  device (see its
+  [network security configuration](flutter_runner/android/app/src/main/res/xml/network_security_config.xml)),
+  so nothing needs to be installed on the device. The CA, which is kept in
+  `.dart_tool/http_client_benchmarks/android-certs`, is not restricted to
+  loopback IP addresses (see above), and its private key is deleted from the
+  device once the server has started.
+* `CronetClient` uses the Cronet library provided by Google Play Services, as
+  most apps do. With `--cronet-embedded`, it uses a copy of Cronet that is
+  embedded in the app instead, which also works on devices without Google Play
+  Services.
+* `CronetClient` doesn't switch to HTTP/3 with the benchmark server (it keeps
+  using HTTP/2, even with QUIC enabled and given the server's HTTP/3 ports as
+  QUIC hints), so its HTTP/3 variant is reported as unavailable.
+* Some clients are skipped in scenarios that would exhaust the app's memory
+  (and so end the run): `OkHttpClient` in `download-cancel`, because it keeps
+  receiving responses after their streams are cancelled, and `CronetClient`
+  in the upload scenarios, because it keeps request bodies in memory after the
+  requests complete.
+* Results from an emulator reflect the computer that runs it rather than a
+  real device.
+
 ### Benchmarking unreleased client changes
 
 The clients come from pub.dev, at the versions recorded in `pubspec.lock`;
@@ -110,7 +161,10 @@ dependency_overrides:
 
 Then run `dart pub get`. If a checkout needs an unreleased version of another
 package (for example `package:http`), override that package too. To go back to
-the published versions, delete the file and run `dart pub get` again.
+the published versions, delete the file and run `dart pub get` again. The
+Flutter runner app resolves its own dependencies, so when benchmarking on
+Android, put the overrides in `flutter_runner/pubspec_overrides.yaml` (with
+paths relative to `flutter_runner`) instead.
 
 To measure the effect of a change, save the `results.json` of runs without and
 with the override and [compare them](#comparing-runs). Differences of 5–20%
@@ -300,7 +354,10 @@ definitions changed. `--markdown` also writes the comparison as Markdown.
 ## Extending the benchmarks
 
 * **Clients:** add a `ClientVariant` to `createClientVariants` in
-  [`lib/src/clients.dart`](lib/src/clients.dart).
+  [`lib/src/clients.dart`](lib/src/clients.dart). Clients that are Flutter
+  plugins for Android belong in `createAndroidClientVariants` in
+  [`flutter_runner/lib/android_clients.dart`](flutter_runner/lib/android_clients.dart)
+  instead, and their names in `androidClientNames`.
 * **Scenarios:** subclass `Scenario` (see
   [`lib/src/scenarios.dart`](lib/src/scenarios.dart)) and add it to
   `createScenarios`. Use `timedSend` to record latency and time to first byte,

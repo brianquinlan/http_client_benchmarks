@@ -12,10 +12,12 @@
 /// ```
 library;
 
+export 'src/android.dart';
 export 'src/cli.dart'
     show runCli, selectScenarios, selectVariants, writeReports;
 export 'src/clients.dart';
 export 'src/compare.dart';
+export 'src/device.dart';
 export 'src/environment.dart';
 export 'src/metric.dart';
 export 'src/protocol.dart';

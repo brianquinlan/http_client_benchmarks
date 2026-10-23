@@ -101,6 +101,12 @@ class BenchmarkRunner {
           ...available.skip(shift),
           ...available.take(shift),
         ]) {
+          if (variant.skippedScenarios[scenario.id] case final reason?) {
+            scenarioResults.add(
+              RunResult.skipped(scenario.id, variant.id, reason),
+            );
+            continue;
+          }
           listener?.onRunStarted(scenario, variant);
           scenarioResults.add(await _runIsolated(scenario, variant, sampler));
         }
@@ -414,7 +420,13 @@ class BenchmarkRunner {
   }
 
   static String _describeError(Object error) {
-    final description = error.toString().split('\n').first;
+    // Some errors explain themselves on later lines (e.g. the reason for a
+    // `HandshakeException`), so join the lines rather than keeping the first.
+    final description = error
+        .toString()
+        .trim()
+        .split(RegExp(r'\s*\n\s*'))
+        .join(' ');
     return description.length > 300
         ? '${description.substring(0, 300)}…'
         : description;

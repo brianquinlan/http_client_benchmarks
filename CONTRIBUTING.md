@@ -27,7 +27,12 @@ in that client's repository; for example, issues with `package:http`,
    dart analyze --fatal-infos
    dart test
    (cd server && gofmt -l . && go vet ./... && go test ./...)
+   (cd flutter_runner && flutter analyze)
    ```
+
+   If you changed how the benchmarks run on Android, also try
+   `dart run bin/benchmark.dart run --device <serial> --quick` with a device
+   or emulator.
 
 4. Update `README.md` if you added or changed scenarios, clients or
    command-line options.

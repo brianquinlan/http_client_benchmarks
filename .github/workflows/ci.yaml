@@ -54,6 +54,26 @@ jobs:
         run: go vet ./...
         if: always()
 
+  # Check the Flutter app that runs the benchmarks on Android.
+  analyze-flutter-runner:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: flutter_runner
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          channel: stable
+      - id: install
+        name: Install dependencies
+        run: flutter pub get
+      - name: Analyze code
+        run: flutter analyze --fatal-infos
+        if: always() && steps.install.outcome == 'success'
+
   # Run the tests on Linux and on macOS, where CupertinoClient is also tested.
   test:
     needs: analyze

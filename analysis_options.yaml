@@ -1,2 +1,8 @@
 # https://dart.dev/tools/analysis#the-analysis-options-file
 include: package:dart_flutter_team_lints/analysis_options.yaml
+
+analyzer:
+  exclude:
+    # A Flutter app with its own dependencies; check it with `flutter analyze`
+    # in that directory.
+    - flutter_runner/**

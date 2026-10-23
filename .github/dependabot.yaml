@@ -22,6 +22,14 @@ updates:
     cooldown:
       default-days: 7
 
+  # The same for the Flutter app that benchmarks the Android clients.
+  - package-ecosystem: pub
+    directory: /flutter_runner
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+
   - package-ecosystem: gomod
     directory: /server
     schedule:

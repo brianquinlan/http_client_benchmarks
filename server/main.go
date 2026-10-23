@@ -848,14 +848,21 @@ func loadCA(certPath, keyPath string) (*x509.Certificate, crypto.Signer, error) 
 // macOS keychain, which is needed to benchmark CupertinoClient over TLS). It
 // uses X.509 name constraints and is restricted to TLS server authentication
 // so that, even if its private key were leaked, it could only be used to
-// issue server certificates for loopback addresses.
-func loadOrCreateCA(dir string) (*x509.Certificate, crypto.Signer, string, error) {
+// issue server certificates for localhost.
+//
+// If ipConstraints is true then the name constraints also restrict the CA to
+// loopback IP addresses. BoringSSL, which dart:io uses to verify certificates
+// on Linux, Windows and Android, rejects certificates for IP addresses that
+// are issued by such a CA, so the benchmarks only use these constraints for a
+// CA that might be trusted by the operating system.
+func loadOrCreateCA(dir string, ipConstraints bool) (*x509.Certificate, crypto.Signer, string, error) {
 	certPath := filepath.Join(dir, "ca.pem")
 	keyPath := filepath.Join(dir, "ca-key.pem")
 	if cert, key, err := loadCA(certPath, keyPath); err == nil {
 		serverAuthOnly := len(cert.ExtKeyUsage) == 1 &&
 			cert.ExtKeyUsage[0] == x509.ExtKeyUsageServerAuth
-		if time.Until(cert.NotAfter) > 30*24*time.Hour && serverAuthOnly {
+		constraintsMatch := (len(cert.PermittedIPRanges) > 0) == ipConstraints
+		if time.Until(cert.NotAfter) > 30*24*time.Hour && serverAuthOnly && constraintsMatch {
 			return cert, key, certPath, nil
 		}
 		fmt.Fprintf(os.Stderr, "Regenerating the benchmark CA %s\n", certPath)
@@ -890,10 +897,12 @@ func loadOrCreateCA(dir string) (*x509.Certificate, crypto.Signer, string, error
 		MaxPathLenZero:              true,
 		PermittedDNSDomainsCritical: true,
 		PermittedDNSDomains:         []string{"localhost"},
-		PermittedIPRanges: []*net.IPNet{
+	}
+	if ipConstraints {
+		template.PermittedIPRanges = []*net.IPNet{
 			{IP: net.IPv4(127, 0, 0, 0).To4(), Mask: net.CIDRMask(8, 32)},
 			{IP: net.IPv6loopback, Mask: net.CIDRMask(128, 128)},
-		},
+		}
 	}
 	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
 	if err != nil {
@@ -971,6 +980,8 @@ type startupInfo struct {
 
 func run() error {
 	certDir := flag.String("cert-dir", "", "directory containing (or that will contain) the benchmark CA")
+	ipConstraints := flag.Bool("ip-constraints", true, "restrict the CA to loopback IP addresses using name constraints, "+
+		"which BoringSSL rejects (see loadOrCreateCA)")
 	host := flag.String("host", "127.0.0.1", "address to listen on")
 	origins := flag.Int("origins", 4, "number of origins (sets of listeners) to start")
 	exitOnEOF := flag.Bool("exit-on-stdin-eof", true, "exit when stdin is closed")
@@ -990,7 +1001,7 @@ func run() error {
 	// common on macOS and harmless for loopback benchmarks.
 	os.Setenv("QUIC_GO_DISABLE_RECEIVE_BUFFER_WARNING", "true")
 
-	ca, caKey, caPath, err := loadOrCreateCA(absCertDir)
+	ca, caKey, caPath, err := loadOrCreateCA(absCertDir, *ipConstraints)
 	if err != nil {
 		return fmt.Errorf("loading the benchmark CA: %w", err)
 	}

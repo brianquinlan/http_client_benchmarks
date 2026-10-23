@@ -31,7 +31,7 @@ type testServer struct {
 
 func startTestServer(t testing.TB) *testServer {
 	t.Helper()
-	ca, caKey, caPath, err := loadOrCreateCA(t.TempDir())
+	ca, caKey, caPath, err := loadOrCreateCA(t.TempDir(), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -259,32 +259,44 @@ func TestJSONAndText(t *testing.T) {
 }
 
 func TestCertificateNameConstraints(t *testing.T) {
-	dir := t.TempDir()
-	ca, caKey, _, err := loadOrCreateCA(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// The CA is reused rather than regenerated.
-	again, _, _, err := loadOrCreateCA(dir)
-	if err != nil || !again.Equal(ca) {
-		t.Fatalf("loadOrCreateCA did not reuse the existing CA (err=%v)", err)
-	}
-	leaf, err := issueLeaf(ca, caKey)
-	if err != nil {
-		t.Fatal(err)
-	}
-	roots := x509.NewCertPool()
-	roots.AddCert(ca)
-	for _, name := range []string{"localhost", "127.0.0.1", "::1"} {
-		if _, err := leaf.Leaf.Verify(x509.VerifyOptions{Roots: roots, DNSName: name}); err != nil {
-			t.Errorf("verifying for %s: %v", name, err)
-		}
-	}
-	if ca.PermittedDNSDomains[0] != "localhost" || !ca.PermittedDNSDomainsCritical {
-		t.Errorf("CA is not constrained to localhost: %v", ca.PermittedDNSDomains)
-	}
-	if len(ca.ExtKeyUsage) != 1 || ca.ExtKeyUsage[0] != x509.ExtKeyUsageServerAuth {
-		t.Errorf("CA is not restricted to server authentication: %v", ca.ExtKeyUsage)
+	for _, ipConstraints := range []bool{true, false} {
+		t.Run(fmt.Sprintf("ipConstraints=%v", ipConstraints), func(t *testing.T) {
+			dir := t.TempDir()
+			ca, caKey, _, err := loadOrCreateCA(dir, ipConstraints)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// The CA is reused rather than regenerated.
+			again, _, _, err := loadOrCreateCA(dir, ipConstraints)
+			if err != nil || !again.Equal(ca) {
+				t.Fatalf("loadOrCreateCA did not reuse the existing CA (err=%v)", err)
+			}
+			leaf, err := issueLeaf(ca, caKey)
+			if err != nil {
+				t.Fatal(err)
+			}
+			roots := x509.NewCertPool()
+			roots.AddCert(ca)
+			for _, name := range []string{"localhost", "127.0.0.1", "::1"} {
+				if _, err := leaf.Leaf.Verify(x509.VerifyOptions{Roots: roots, DNSName: name}); err != nil {
+					t.Errorf("verifying for %s: %v", name, err)
+				}
+			}
+			if ca.PermittedDNSDomains[0] != "localhost" || !ca.PermittedDNSDomainsCritical {
+				t.Errorf("CA is not constrained to localhost: %v", ca.PermittedDNSDomains)
+			}
+			if got := len(ca.PermittedIPRanges) > 0; got != ipConstraints {
+				t.Errorf("CA has IP constraints: %v, want %v", got, ipConstraints)
+			}
+			if len(ca.ExtKeyUsage) != 1 || ca.ExtKeyUsage[0] != x509.ExtKeyUsageServerAuth {
+				t.Errorf("CA is not restricted to server authentication: %v", ca.ExtKeyUsage)
+			}
+			// Asking for the other kind of CA regenerates it.
+			other, _, _, err := loadOrCreateCA(dir, !ipConstraints)
+			if err != nil || other.Equal(ca) {
+				t.Fatalf("loadOrCreateCA did not regenerate the CA (err=%v)", err)
+			}
+		})
 	}
 }
 

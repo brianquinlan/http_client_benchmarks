@@ -13,7 +13,19 @@ import 'package:http2/client.dart';
 import 'protocol.dart';
 
 /// The names of the [Client] implementations that can be benchmarked.
-const clientNames = ['IOClient', 'Http2Client', 'CupertinoClient'];
+const clientNames = [
+  'IOClient',
+  'Http2Client',
+  'CupertinoClient',
+  ...androidClientNames,
+];
+
+/// The names of the [Client] implementations that can only be benchmarked on
+/// Android devices.
+///
+/// They are Flutter plugins, so `flutter_runner` (rather than
+/// [createClientVariants]) creates them.
+const androidClientNames = ['OkHttpClient', 'CronetClient'];
 
 /// A [Client] implementation, configured to use a particular [HttpProtocol].
 class ClientVariant {
@@ -21,6 +33,7 @@ class ClientVariant {
     required this.client,
     required this.protocol,
     required Client Function() factory,
+    this.skippedScenarios = const {},
   }) : _factory = factory;
 
   /// The name of the [Client] implementation, e.g. "IOClient".
@@ -28,6 +41,10 @@ class ClientVariant {
 
   /// The protocol that the client is expected to use.
   final HttpProtocol protocol;
+
+  /// The IDs of the scenarios that the variant can't run, and the reasons
+  /// why, which are reported instead of results.
+  final Map<String, String> skippedScenarios;
 
   final Client Function() _factory;
 

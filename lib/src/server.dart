@@ -110,94 +110,42 @@ class ServerStats {
       connections.values.fold(0, (total, stats) => total + stats.open);
 }
 
-/// The Go benchmark server (see `server/main.go`), running in a child
-/// process.
-class BenchmarkServer {
-  BenchmarkServer._({
-    required Process process,
+/// The details that the benchmark server reports when it starts.
+class ServerInfo {
+  ServerInfo({
     required this.host,
     required this.controlPort,
     required this.origins,
     required this.caCertificatePath,
-    required this.caCertificate,
     required this.goVersion,
     required this.quicGoVersion,
-  }) : _process = process;
+  });
 
-  final Process _process;
+  /// Parses the details printed by the server (see `server/main.go`) or
+  /// returned by [toJson].
+  factory ServerInfo.fromJson(Map<String, Object?> json) => ServerInfo(
+    host: json['host'] as String,
+    controlPort: json['controlPort'] as int,
+    origins: [
+      for (final origin in json['origins'] as List<Object?>)
+        {
+          for (final protocol in HttpProtocol.values)
+            protocol: (origin as Map<String, Object?>)[protocol.id] as int,
+        },
+    ],
+    caCertificatePath: json['caCertificate'] as String,
+    goVersion: json['goVersion'] as String,
+    quicGoVersion: json['quicGoVersion'] as String,
+  );
 
-  // The control connection must not go through a proxy configured in the
-  // environment (e.g. `http_proxy`).
-  final HttpClient _control = HttpClient()..findProxy = (_) => 'DIRECT';
-
-  /// The address that the server listens on.
-  final String host;
-
-  /// The port that serves the server's counters.
-  final int controlPort;
-
-  /// The ports for each protocol, for each origin.
-  final List<Map<HttpProtocol, int>> origins;
-
-  /// The path of the PEM-encoded certificate of the CA that signed the
-  /// server's certificate.
-  final String caCertificatePath;
-
-  /// The PEM-encoded certificate of the CA that signed the server's
-  /// certificate.
-  final Uint8List caCertificate;
-
-  /// The version of Go used to build the server.
-  final String goVersion;
-
-  /// The version of the `quic-go` module used to build the server.
-  final String quicGoVersion;
-
-  /// Returns the root directory of this package.
-  static Future<String> packageDirectory() async {
-    final libraryUri = await Isolate.resolvePackageUri(
-      Uri.parse('package:http_client_benchmarks/http_client_benchmarks.dart'),
-    );
-    if (libraryUri == null || !libraryUri.isScheme('file')) {
-      throw BenchmarkServerException(
-        'Unable to locate the http_client_benchmarks package. Run the '
-        'benchmarks with "dart run" or pass the package directory explicitly.',
-      );
-    }
-    return p.dirname(p.dirname(libraryUri.toFilePath()));
-  }
-
-  /// Builds (if necessary) and starts the benchmark server.
+  /// Waits for [process], a benchmark server that is starting, to print its
+  /// details.
   ///
-  /// The certificate authority used by the server is created in
-  /// [certificateDirectory] (by default `.dart_tool/http_client_benchmarks/
-  /// certs` inside this package) and reused across runs.
-  static Future<BenchmarkServer> start({
-    String? packageDirectory,
-    String? certificateDirectory,
-    int origins = 4,
+  /// The server's output is copied to [stderr] if [verbose] is true.
+  static Future<ServerInfo> waitFor(
+    Process process, {
     bool verbose = false,
   }) async {
-    packageDirectory ??= await BenchmarkServer.packageDirectory();
-    final toolDirectory = p.join(
-      packageDirectory,
-      '.dart_tool',
-      'http_client_benchmarks',
-    );
-    final binary = p.join(
-      toolDirectory,
-      Platform.isWindows ? 'server.exe' : 'server',
-    );
-    await _build(p.join(packageDirectory, 'server'), binary);
-
-    final process = await Process.start(binary, [
-      '-cert-dir',
-      certificateDirectory ?? p.join(toolDirectory, 'certs'),
-      '-origins',
-      '$origins',
-      if (verbose) '-verbose',
-    ]);
-
     final ready = Completer<Map<String, Object?>>();
     final stderrTail = <String>[];
     process.stderr
@@ -238,47 +186,150 @@ class BenchmarkServer {
     );
 
     try {
-      final Map<String, Object?> info;
-      try {
-        info = await ready.future.timeout(const Duration(seconds: 30));
-      } on TimeoutException {
-        throw BenchmarkServerException(
-          'Timed out waiting for the benchmark server to start.',
-        );
-      }
-
-      final caCertificatePath = info['caCertificate'] as String;
-      return BenchmarkServer._(
-        process: process,
-        host: info['host'] as String,
-        controlPort: info['controlPort'] as int,
-        origins: [
-          for (final origin in info['origins'] as List<Object?>)
-            {
-              for (final protocol in HttpProtocol.values)
-                protocol: (origin as Map<String, Object?>)[protocol.id] as int,
-            },
-        ],
-        caCertificatePath: caCertificatePath,
-        caCertificate: await File(caCertificatePath).readAsBytes(),
-        goVersion: info['goVersion'] as String,
-        quicGoVersion: info['quicGoVersion'] as String,
+      return ServerInfo.fromJson(
+        await ready.future.timeout(const Duration(seconds: 30)),
       );
-    } catch (_) {
-      process.kill();
-      rethrow;
+    } on TimeoutException {
+      throw BenchmarkServerException(
+        'Timed out waiting for the benchmark server to start.',
+      );
     }
   }
 
-  static Future<void> _build(String serverDirectory, String binary) async {
+  /// The address that the server listens on.
+  final String host;
+
+  /// The port that serves the server's counters.
+  final int controlPort;
+
+  /// The ports for each protocol, for each origin.
+  final List<Map<HttpProtocol, int>> origins;
+
+  /// The path, on the machine that runs the server, of the PEM-encoded
+  /// certificate of the CA that signed the server's certificate.
+  final String caCertificatePath;
+
+  /// The version of Go used to build the server.
+  final String goVersion;
+
+  /// The version of the `quic-go` module used to build the server.
+  final String quicGoVersion;
+
+  Map<String, Object?> toJson() => {
+    'host': host,
+    'controlPort': controlPort,
+    'origins': [
+      for (final origin in origins)
+        {for (final MapEntry(:key, :value) in origin.entries) key.id: value},
+    ],
+    'caCertificate': caCertificatePath,
+    'goVersion': goVersion,
+    'quicGoVersion': quicGoVersion,
+  };
+}
+
+/// The Go benchmark server (see `server/main.go`).
+///
+/// The server either runs in a child process ([start]) or was started
+/// elsewhere, e.g. on an Android device by the machine that controls the
+/// device ([BenchmarkServer.connect]).
+class BenchmarkServer {
+  BenchmarkServer._(this._process, this.info, this.caCertificate);
+
+  /// Connects to a benchmark server that is already running, described by
+  /// [info].
+  ///
+  /// [caCertificate] is the PEM-encoded certificate of the CA that signed the
+  /// server's certificate. [close] does not stop the server.
+  BenchmarkServer.connect(ServerInfo info, {required Uint8List caCertificate})
+    : this._(null, info, caCertificate);
+
+  final Process? _process;
+
+  // The control connection must not go through a proxy configured in the
+  // environment (e.g. `http_proxy`).
+  final HttpClient _control = HttpClient()..findProxy = (_) => 'DIRECT';
+
+  /// The details that the server reported when it started.
+  final ServerInfo info;
+
+  /// The PEM-encoded certificate of the CA that signed the server's
+  /// certificate.
+  final Uint8List caCertificate;
+
+  /// The address that the server listens on.
+  String get host => info.host;
+
+  /// The port that serves the server's counters.
+  int get controlPort => info.controlPort;
+
+  /// The ports for each protocol, for each origin.
+  List<Map<HttpProtocol, int>> get origins => info.origins;
+
+  /// The path of the PEM-encoded certificate of the CA that signed the
+  /// server's certificate.
+  String get caCertificatePath => info.caCertificatePath;
+
+  /// The version of Go used to build the server.
+  String get goVersion => info.goVersion;
+
+  /// The version of the `quic-go` module used to build the server.
+  String get quicGoVersion => info.quicGoVersion;
+
+  /// Returns the root directory of this package.
+  static Future<String> packageDirectory() async {
+    final libraryUri = await Isolate.resolvePackageUri(
+      Uri.parse('package:http_client_benchmarks/http_client_benchmarks.dart'),
+    );
+    if (libraryUri == null || !libraryUri.isScheme('file')) {
+      throw BenchmarkServerException(
+        'Unable to locate the http_client_benchmarks package. Run the '
+        'benchmarks with "dart run" or pass the package directory explicitly.',
+      );
+    }
+    return p.dirname(p.dirname(libraryUri.toFilePath()));
+  }
+
+  /// The directory that contains the benchmark CA unless another one is
+  /// given.
+  static String defaultCertificateDirectory(String packageDirectory) =>
+      p.join(_toolDirectory(packageDirectory), 'certs');
+
+  static String _toolDirectory(String packageDirectory) =>
+      p.join(packageDirectory, '.dart_tool', 'http_client_benchmarks');
+
+  /// Builds the benchmark server and returns the path of the executable.
+  ///
+  /// The server is built for this machine unless [os] and [architecture]
+  /// (Go's `GOOS` and `GOARCH`, e.g. "linux" and "arm64") are given, in which
+  /// case it is built as a static executable that does not depend on the C
+  /// library, e.g. to run on Android.
+  static Future<String> build({
+    String? packageDirectory,
+    String? os,
+    String? architecture,
+  }) async {
+    if ((os == null) != (architecture == null)) {
+      throw ArgumentError('os and architecture must be given together');
+    }
+    packageDirectory ??= await BenchmarkServer.packageDirectory();
+    final binary = p.join(
+      _toolDirectory(packageDirectory),
+      os != null
+          ? 'server-$os-$architecture'
+          : (Platform.isWindows ? 'server.exe' : 'server'),
+    );
+    final serverDirectory = p.join(packageDirectory, 'server');
     final ProcessResult result;
     try {
-      result = await Process.run('go', [
-        'build',
-        '-o',
-        binary,
-        '.',
-      ], workingDirectory: serverDirectory);
+      result = await Process.run(
+        'go',
+        ['build', '-o', binary, '.'],
+        workingDirectory: serverDirectory,
+        environment: os == null
+            ? null
+            : {'GOOS': os, 'GOARCH': architecture!, 'CGO_ENABLED': '0'},
+      );
     } on ProcessException catch (e) {
       throw BenchmarkServerException(
         'Unable to run "go" (${e.message}). Go 1.26 or later is required to '
@@ -290,6 +341,51 @@ class BenchmarkServer {
         'Failed to build the benchmark server in $serverDirectory:\n'
         '${result.stderr}',
       );
+    }
+    return binary;
+  }
+
+  /// Builds (if necessary) and starts the benchmark server.
+  ///
+  /// The certificate authority used by the server is created in
+  /// [certificateDirectory] (by default `.dart_tool/http_client_benchmarks/
+  /// certs` inside this package) and reused across runs.
+  ///
+  /// If [ipConstraints] is true then the CA can only issue certificates for
+  /// loopback IP addresses (and `localhost`), which makes it safer to trust
+  /// it in the operating system's trust store. BoringSSL, which `dart:io`
+  /// uses to verify certificates except on Apple platforms, rejects the
+  /// server's certificate if the CA is restricted in this way, so by default
+  /// the restriction is only used on macOS and iOS, where the CA may need to
+  /// be trusted by the operating system (e.g. for `CupertinoClient`).
+  static Future<BenchmarkServer> start({
+    String? packageDirectory,
+    String? certificateDirectory,
+    int origins = 4,
+    bool? ipConstraints,
+    bool verbose = false,
+  }) async {
+    packageDirectory ??= await BenchmarkServer.packageDirectory();
+    ipConstraints ??= Platform.isMacOS || Platform.isIOS;
+    final binary = await build(packageDirectory: packageDirectory);
+    final process = await Process.start(binary, [
+      '-cert-dir',
+      certificateDirectory ?? defaultCertificateDirectory(packageDirectory),
+      '-origins',
+      '$origins',
+      '-ip-constraints=$ipConstraints',
+      if (verbose) '-verbose',
+    ]);
+    try {
+      final info = await ServerInfo.waitFor(process, verbose: verbose);
+      return BenchmarkServer._(
+        process,
+        info,
+        await File(info.caCertificatePath).readAsBytes(),
+      );
+    } catch (_) {
+      process.kill();
+      rethrow;
     }
   }
 
@@ -349,19 +445,21 @@ class BenchmarkServer {
     return (jsonDecode(body) as Map<String, Object?>)['bytes'] as int;
   }
 
-  /// Stops the server.
+  /// Stops the server if it was started by [start].
   Future<void> close() async {
     _control.close(force: true);
+    final process = _process;
+    if (process == null) return;
     // The server exits when its stdin is closed.
     try {
-      await _process.stdin.close();
+      await process.stdin.close();
     } on IOException {
       // The server has already exited.
     }
-    await _process.exitCode.timeout(
+    await process.exitCode.timeout(
       const Duration(seconds: 5),
       onTimeout: () {
-        _process.kill(ProcessSignal.sigkill);
+        process.kill(ProcessSignal.sigkill);
         return -1;
       },
     );

@@ -1,0 +1,32 @@
+name: flutter_runner
+description: Runs the http_client_benchmarks on Android devices.
+publish_to: none
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.10.0
+  flutter: ">=3.38.0"
+
+dependencies:
+  cronet_http: ^1.9.0
+  flutter:
+    sdk: flutter
+  http_client_benchmarks:
+    path: ../
+  # The published ok_http (0.1.0) needs an older version of package:jni than
+  # cronet_http does. Switch to `ok_http: ^0.1.1` once it is published.
+  ok_http:
+    git:
+      url: https://github.com/dart-lang/http.git
+      path: pkgs/ok_http
+      ref: master
+
+dev_dependencies:
+  dart_flutter_team_lints: ^3.5.0
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true

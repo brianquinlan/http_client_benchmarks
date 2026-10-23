@@ -35,23 +35,34 @@ class Environment {
   );
 
   /// Describes the current machine.
+  ///
+  /// [cpu], [operatingSystemVersion] and [gitRevision] replace the values
+  /// detected on this machine, e.g. when the benchmarks run on an Android
+  /// device, which the machine that controls the device describes better.
   static Future<Environment> capture({
     String? goVersion,
     String? quicGoVersion,
     String? workingDirectory,
+    String? cpu,
+    String? operatingSystemVersion,
+    String? gitRevision,
   }) async => Environment(
     operatingSystem: Platform.operatingSystem,
-    operatingSystemVersion: Platform.operatingSystemVersion,
+    operatingSystemVersion:
+        operatingSystemVersion ?? Platform.operatingSystemVersion,
     dartVersion: Platform.version.split(' ').first,
-    compilationMode: const bool.fromEnvironment('dart.vm.product')
+    // Flutter's profile mode is also compiled ahead of time.
+    compilationMode:
+        const bool.fromEnvironment('dart.vm.product') ||
+            const bool.fromEnvironment('dart.vm.profile')
         ? 'AOT'
         : 'JIT',
-    cpu: await _cpu(),
+    cpu: cpu ?? await _cpu(),
     processors: Platform.numberOfProcessors,
     memoryBytes: await _memory(),
     goVersion: goVersion,
     quicGoVersion: quicGoVersion,
-    gitRevision: await _gitRevision(workingDirectory),
+    gitRevision: gitRevision ?? await _gitRevision(workingDirectory),
   );
 
   final String operatingSystem;
@@ -134,7 +145,7 @@ Future<String> _cpu() async {
 Future<int?> _memory() async {
   if (Platform.isMacOS) {
     return int.tryParse(await _run('sysctl', ['-n', 'hw.memsize']) ?? '');
-  } else if (Platform.isLinux) {
+  } else if (Platform.isLinux || Platform.isAndroid) {
     try {
       for (final line in await File('/proc/meminfo').readAsLines()) {
         if (line.startsWith('MemTotal:')) {

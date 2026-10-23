@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The benchmark server runs on the device and is reached over loopback. Only
+  connections to it may use cleartext HTTP or trust the benchmark CA; other
+  connections use the platform's defaults.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+        <trust-anchors>
+            <!--
+              Written by the benchmark command-line tool before it builds the
+              app to run the benchmarks on a device (and ignored by git).
+            -->
+            <certificates src="@raw/benchmark_ca"/>
+        </trust-anchors>
+    </domain-config>
+</network-security-config>
