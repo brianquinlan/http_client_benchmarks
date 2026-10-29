@@ -356,8 +356,7 @@ class BenchmarkServer {
   /// it in the operating system's trust store. BoringSSL, which `dart:io`
   /// uses to verify certificates except on Apple platforms, rejects the
   /// server's certificate if the CA is restricted in this way, so by default
-  /// the restriction is only used on macOS and iOS, where the CA may need to
-  /// be trusted by the operating system (e.g. for `CupertinoClient`).
+  /// the restriction is only used on macOS and iOS.
   static Future<BenchmarkServer> start({
     String? packageDirectory,
     String? certificateDirectory,

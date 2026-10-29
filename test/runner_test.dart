@@ -11,8 +11,8 @@ import 'dart:io';
 import 'package:http_client_benchmarks/http_client_benchmarks.dart';
 import 'package:test/test.dart';
 
-/// Runs every scenario once with each client that can run without trusting
-/// the benchmark CA, checking that the scenarios execute correctly.
+/// Runs every scenario once with each client, checking that the scenarios
+/// execute correctly.
 void main() {
   late BenchmarkServer server;
   late Directory certificates;
@@ -33,7 +33,7 @@ void main() {
     final variants = selectVariants(
       createClientVariants(caCertificate: server.caCertificate),
       protocols: ['h1c', 'h1', 'h2'],
-    ).where((v) => v.client != 'CupertinoClient' || !v.protocol.secure);
+    );
     final scenarios = createScenarios(quick: true);
     final configuration = RunConfiguration(
       trials: 1,

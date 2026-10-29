@@ -844,8 +844,8 @@ func loadCA(certPath, keyPath string) (*x509.Certificate, crypto.Signer, error) 
 // loadOrCreateCA returns the benchmark certificate authority, creating it if
 // necessary.
 //
-// The CA is persisted so that it only has to be trusted once (e.g. in the
-// macOS keychain, which is needed to benchmark CupertinoClient over TLS). It
+// The CA is persisted so that it is reused across runs (e.g. it is built into
+// the Android app, which would otherwise be rebuilt for every run). It
 // uses X.509 name constraints and is restricted to TLS server authentication
 // so that, even if its private key were leaked, it could only be used to
 // issue server certificates for localhost.
@@ -853,8 +853,8 @@ func loadCA(certPath, keyPath string) (*x509.Certificate, crypto.Signer, error) 
 // If ipConstraints is true then the name constraints also restrict the CA to
 // loopback IP addresses. BoringSSL, which dart:io uses to verify certificates
 // on Linux, Windows and Android, rejects certificates for IP addresses that
-// are issued by such a CA, so the benchmarks only use these constraints for a
-// CA that might be trusted by the operating system.
+// are issued by such a CA, so the benchmarks only use these constraints on
+// macOS and iOS.
 func loadOrCreateCA(dir string, ipConstraints bool) (*x509.Certificate, crypto.Signer, string, error) {
 	certPath := filepath.Join(dir, "ca.pem")
 	keyPath := filepath.Join(dir, "ca-key.pem")

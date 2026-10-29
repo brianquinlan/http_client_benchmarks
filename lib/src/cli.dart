@@ -378,7 +378,6 @@ class RunCommand extends Command<int> {
         environment: environment,
         configuration: configuration,
         scenarioCount: scenarios.length,
-        caCertificatePath: server.caCertificatePath,
       );
       return await BenchmarkRunner(
         server: server,

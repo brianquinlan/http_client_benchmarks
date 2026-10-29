@@ -64,7 +64,6 @@ class ConsoleReporter implements RunnerListener {
   final _variants = <VariantInfo>[];
   late Environment _environment;
   late RunConfiguration _configuration;
-  String? _caCertificatePath;
   var _scenarioCount = 0;
   var _scenarioIndex = 0;
   var _progressVisible = false;
@@ -91,19 +90,14 @@ class ConsoleReporter implements RunnerListener {
   }
 
   /// Writes a description of the benchmark run.
-  ///
-  /// [caCertificatePath] is the location of the benchmark CA, which is
-  /// mentioned if a client cannot connect because it does not trust the CA.
   void printHeader({
     required Environment environment,
     required RunConfiguration configuration,
     required int scenarioCount,
-    String? caCertificatePath,
   }) {
     _environment = environment;
     _configuration = configuration;
     _scenarioCount = scenarioCount;
-    _caCertificatePath = caCertificatePath;
     _sink
       ..writeln(_bold('package:http client benchmarks'))
       ..writeln('  ${environment.machine}')
@@ -116,29 +110,6 @@ class ConsoleReporter implements RunnerListener {
       )
       ..writeln()
       ..writeln(_bold('Clients'));
-  }
-
-  /// Explains how to trust the benchmark CA, which `CupertinoClient` needs in
-  /// order to use TLS.
-  void printTrustHint(String caCertificatePath) {
-    _sink
-      ..writeln()
-      ..writeln(
-        _yellow(
-          '  CupertinoClient can only use TLS (and therefore HTTP/2 and '
-          'HTTP/3) when the benchmark CA is trusted by macOS.',
-        ),
-      )
-      ..writeln(
-        '  The CA can only issue TLS server certificates for localhost. To '
-        'trust it for TLS, run:',
-      )
-      ..writeln(
-        '    security add-trusted-cert -r trustRoot -p ssl '
-        '-k ~/Library/Keychains/login.keychain-db $caCertificatePath',
-      )
-      ..writeln('  To remove it later, run:')
-      ..writeln('    security remove-trusted-cert $caCertificatePath');
   }
 
   @override
@@ -156,15 +127,7 @@ class ConsoleReporter implements RunnerListener {
   }
 
   @override
-  void onVariantsChecked(List<VariantInfo> variants) {
-    final caCertificatePath = _caCertificatePath;
-    final cupertinoTlsUnavailable = variants.any(
-      (v) => v.client == 'CupertinoClient' && v.protocol.secure && !v.available,
-    );
-    if (cupertinoTlsUnavailable && caCertificatePath != null) {
-      printTrustHint(caCertificatePath);
-    }
-  }
+  void onVariantsChecked(List<VariantInfo> variants) {}
 
   @override
   void onScenarioStarted(Scenario scenario) {

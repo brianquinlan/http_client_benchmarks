@@ -10,11 +10,11 @@ a library) that benchmarks `package:http` `Client` implementations against a
 purpose-built Go server that speaks HTTP/1.1, HTTP/2 and HTTP/3. The Dart code
 builds the server with `go build` whenever it starts it.
 
-The benchmarks run in the Dart VM (`IOClient`, `Http2Client` and, on macOS,
-`CupertinoClient`), or on an Android device (`IOClient`, `Http2Client`,
-`OkHttpClient` and `CronetClient`). On Android, the tool cross-compiles the
-server, starts it on the device with `adb`, and runs the benchmarks in a
-Flutter app (`flutter_runner/`) with `flutter drive`.
+The benchmarks run in the Dart VM (`IOClient`, `Http2Client`, `CurlClient`
+and, on macOS, `CupertinoClient`), or on an Android device (`IOClient`,
+`Http2Client`, `OkHttpClient` and `CronetClient`). On Android, the tool
+cross-compiles the server, starts it on the device with `adb`, and runs the
+benchmarks in a Flutter app (`flutter_runner/`) with `flutter drive`.
 
 ## Layout
 
@@ -72,11 +72,9 @@ CI (`.github/workflows/ci.yaml`) runs all of these except the smoke tests.
 
 ## Things to avoid
 
-* Do not trust the benchmark's certificate authority
-  (`security add-trusted-cert`) or otherwise change the system trust store or
-  keychain; leave that to the user. Until the user trusts it,
-  `CupertinoClient` can only be benchmarked over cleartext HTTP/1.1 (`h1c`),
-  and its other variants being reported as unavailable is expected.
+* Do not add the benchmark's certificate authority to the system trust store
+  or keychain (e.g. with `security add-trusted-cert`); the clients are
+  configured to trust it themselves (`CupertinoClient` with `onChallenge`).
 * Do not restrict the CA to loopback IP addresses (the server's
   `-ip-constraints` flag) where `dart:io` verifies certificates with
   BoringSSL (everywhere except Apple platforms): BoringSSL then rejects the

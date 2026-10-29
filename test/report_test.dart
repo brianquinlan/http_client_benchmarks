@@ -488,7 +488,7 @@ void main() {
       ]);
       expect(
         selectVariants(variants, protocols: ['h2']).map((v) => v.client),
-        everyElement(isIn(['Http2Client', 'CupertinoClient'])),
+        everyElement(isIn(['Http2Client', 'CupertinoClient', 'CurlClient'])),
       );
     });
 

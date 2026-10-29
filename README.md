@@ -14,6 +14,7 @@ and exercise:
 | `IOClient` | [`package:http`](https://pub.dev/packages/http) | HTTP/1.1 (cleartext and TLS) |
 | `Http2Client` | [`package:http2`](https://pub.dev/packages/http2) | HTTP/2 |
 | `CupertinoClient` (macOS only) | [`package:cupertino_http`](https://pub.dev/packages/cupertino_http) | HTTP/1.1 (cleartext and TLS), HTTP/2, HTTP/3 |
+| `CurlClient` | [`package:curl_http`](https://github.com/dart-lang/http/tree/master/pkgs/curl_http) (not yet published) | HTTP/1.1 (cleartext and TLS), HTTP/2 |
 | `OkHttpClient` (Android only) | [`package:ok_http`](https://pub.dev/packages/ok_http) | HTTP/1.1 (cleartext and TLS), HTTP/2 |
 | `CronetClient` (Android only) | [`package:cronet_http`](https://pub.dev/packages/cronet_http) | HTTP/1.1 (cleartext and TLS), HTTP/2, HTTP/3 |
 
@@ -28,6 +29,12 @@ HTTP/3).
   (with `go build`) whenever the benchmarks run; the first build downloads
   `quic-go`.
 * macOS with the Xcode command line tools to benchmark `CupertinoClient`.
+* [CMake](https://cmake.org) and a C/C++ compiler (e.g. the Xcode command
+  line tools) to benchmark `CurlClient`, which builds libcurl from source the
+  first time that it runs (in about a minute). `package:curl_http` is not
+  published yet, so it is used from a checkout of
+  [dart-lang/http](https://github.com/dart-lang/http) next to this repository
+  (`../http`).
 * [Flutter](https://docs.flutter.dev/get-started), `adb` and an Android
   device or emulator to benchmark on Android.
 
@@ -73,34 +80,37 @@ dart run bin/benchmark.dart run --quick --http-profiling
 dart run bin/benchmark.dart list
 ```
 
-### Benchmarking `CupertinoClient` over TLS, HTTP/2 and HTTP/3
+### The benchmark certificate authority
 
-`IOClient` and `Http2Client` are configured to trust the benchmark server's
-certificate authority (CA), but `CupertinoClient` uses the macOS trust store.
-Until the CA is trusted, `CupertinoClient` can only be benchmarked over
-cleartext HTTP/1.1, and the benchmark explains how to trust the CA:
+The server's certificates are issued by a certificate authority (CA) that is
+created on the first run and reused afterwards. The clients are configured to
+trust it without changing the operating system's trust store: `IOClient` and
+`Http2Client` use it as their only trusted root, and `CupertinoClient`
+evaluates the server's certificate against it in an `onChallenge` callback
+(added in `package:cupertino_http` 3.2.0; until that is published, point the
+benchmarks at a checkout of `package:cupertino_http` that has it, as described
+in [Benchmarking unreleased client changes](#benchmarking-unreleased-client-changes)).
 
-```shell
-security add-trusted-cert -r trustRoot -p ssl \
-  -k ~/Library/Keychains/login.keychain-db \
-  .dart_tool/http_client_benchmarks/certs/ca.pem
-```
+The CA uses X.509 name constraints and is restricted to TLS server
+authentication, so it can only issue server certificates for `localhost` and,
+on macOS, `127.0.0.0/8` and `::1`; even if its private key were leaked it
+could not be used to impersonate other servers. On other platforms, the CA is
+not restricted to loopback IP addresses because `dart:io` verifies
+certificates with BoringSSL there, and BoringSSL rejects certificates for IP
+addresses that are issued by a CA with IP address constraints.
 
-The CA is created on the first run and reused afterwards. It uses X.509 name
-constraints and is restricted to TLS server authentication, so it can only
-issue server certificates for `localhost`, `127.0.0.0/8` and `::1`; even if
-its private key were leaked it could not be used to impersonate other servers
-(and `-p ssl` only trusts it for TLS). To stop trusting it:
+`CupertinoClient` doesn't switch to HTTP/3 with the benchmark server, so its
+HTTP/3 variant is reported as unavailable: `NSURLSession` ignores the server's
+`Alt-Svc` header when the server is trusted by `onChallenge`. (Requests that
+set `assumesHTTP3Capable` do use HTTP/3, but `CupertinoClient` doesn't set
+it.)
+
+Earlier versions of the benchmarks asked you to trust the CA in the macOS
+keychain. That is no longer necessary; to stop trusting it:
 
 ```shell
 security remove-trusted-cert .dart_tool/http_client_benchmarks/certs/ca.pem
 ```
-
-On other platforms, the CA is not restricted to loopback IP addresses because
-`dart:io` verifies certificates with BoringSSL there, and BoringSSL rejects
-certificates for IP addresses that are issued by a CA with IP address
-constraints. That CA only needs to be trusted by the benchmarks themselves,
-never by the operating system.
 
 ### Benchmarking on Android
 
@@ -329,9 +339,10 @@ definitions changed. `--markdown` also writes the comparison as Markdown.
 * **Default configurations.** Clients are benchmarked with their default
   settings, as most applications use them. Notably, `NSURLSession` (used by
   `CupertinoClient`) opens at most 6 connections per host by default
-  (`HTTPMaximumConnectionsPerHost`), `HttpClient` (used by `IOClient`) has no
-  limit, and `Http2Client` multiplexes up to 100 concurrent requests on each
-  connection before opening another. The `Conns` column shows the effect.
+  (`HTTPMaximumConnectionsPerHost`), `HttpClient` (used by `IOClient`) and
+  libcurl (used by `CurlClient`) have no limit, and `Http2Client` and libcurl
+  multiplex up to 100 concurrent requests on each HTTP/2 connection before
+  opening another. The `Conns` column shows the effect.
 * **Server differences between protocols.** Some differences between
   protocols come from the server rather than the client. For example,
   `quic-go` does not use QPACK's dynamic table, so `many-headers` sends every
@@ -346,8 +357,8 @@ definitions changed. `--markdown` also writes the comparison as Markdown.
   not support HTTP profiling, so it does the same work either way; compare
   each client with and without profiling rather than clients with each other.
 * **Proxies.** Proxies configured through environment variables (e.g.
-  `http_proxy`) are ignored by the `dart:io` clients so that requests always
-  go directly to the benchmark server. `CupertinoClient` uses the system proxy
+  `http_proxy`) are ignored by the `dart:io` clients and by `CurlClient` so
+  that requests always go directly to the benchmark server. `CupertinoClient` uses the system proxy
   settings, which normally bypass loopback addresses; if you use a system-wide
   proxy, make sure that it is not used for `127.0.0.1`.
 

@@ -10,7 +10,13 @@ environment:
 
 dependencies:
   args: ^2.7.0
-  cupertino_http: ^3.1.0
+  # 3.2.0 adds `onChallenge`, which `CupertinoClient` uses to trust the
+  # benchmark CA.
+  cupertino_http: ^3.2.0-wip
+  # Not published yet, so it is used from a checkout of
+  # https://github.com/dart-lang/http next to this repository.
+  curl_http:
+    path: ../http/pkgs/curl_http
   http: ^1.6.0
   # 3.1.0 is the first release with `Http2Client`.
   http2: ^3.1.0
